@@ -1,0 +1,49 @@
+{
+  "_comment": "Per-platform hardware parameters for the roofline model. The roofline FORMULAS are platform-independent (see roofline.py); only these numeric parameters change per platform. 'a_us' is the P2P RTT of a small message (fixed startup latency), measured via pping.",
+
+  "platforms": {
+    "p5en": {
+      "description": "AWS P5en (H100, 8 GPUs/node, dual EFA)",
+      "n_gpus_per_node": 8,
+      "a_us": 24.92,
+      "a_us_provenance": "mean of pping RTT_us for msg<=32B",
+      "nic": {
+        "link_bw_GBs": 50,
+        "efficiency": 0.975,
+        "_comment": "aggregate NIC bandwidth = link_bw_GBs * efficiency * 1e3 bytes/us."
+      },
+      "nccl_intra_node_latency_us": {
+        "_comment": "NCCL tuning.cc: intra-node latency = base + (n_gpus_per_node-1)*hop, per (algo, protocol). base = baseLatencies[algo][proto]; hop = hwLatencies[NVLINK][algo][proto].",
+        "base": {
+          "ring": {"simple": 8.4, "ll": 6.6, "ll128": 7.0},
+          "tree": {"simple": 8.4, "ll": 6.8, "ll128": 7.0}
+        },
+        "hop": {
+          "ring": {"simple": 3.4, "ll": 0.6, "ll128": 1.9},
+          "tree": {"simple": 4.0, "ll": 0.6, "ll128": 1.25}
+        }
+      }
+    },
+
+    "p6-b200": {
+      "description": "AWS P6-B200 (B200, 8 GPUs/node, single EFA).",
+      "n_gpus_per_node": 8,
+      "a_us": 30.663333333333334,
+      "a_us_provenance": "mean of pping RTT_us for msg<=32B",
+      "nic": {
+        "link_bw_GBs": 50,
+        "efficiency": 0.975
+      },
+      "nccl_intra_node_latency_us": {
+        "base": {
+          "ring": {"simple": 8.4, "ll": 6.6, "ll128": 7.0},
+          "tree": {"simple": 8.4, "ll": 6.8, "ll128": 7.0}
+        },
+        "hop": {
+          "ring": {"simple": 3.4, "ll": 0.6, "ll128": 1.9},
+          "tree": {"simple": 4.0, "ll": 0.6, "ll128": 1.25}
+        }
+      }
+    }
+  }
+}

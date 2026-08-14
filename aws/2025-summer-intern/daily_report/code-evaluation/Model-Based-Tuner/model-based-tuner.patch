@@ -1,0 +1,316 @@
+diff --git a/include/tuner/nccl_ofi_tuner_model.h b/include/tuner/nccl_ofi_tuner_model.h
+index efaf8bb..6f015bb 100644
+--- a/include/tuner/nccl_ofi_tuner_model.h
++++ b/include/tuner/nccl_ofi_tuner_model.h
+@@ -3,17 +3,58 @@
+ 
+ #include "tuner/nccl_ofi_tuner_common.h"
+ 
++// typedef struct nccl_ofi_tuner_model_params {
++// 	float net_lat; /* 2 nodes, 8B RDMA w/imm lat */
++// 	float internode_bw; /* per rail */
++// 	float intranode_bw;
++// 	int num_rails;
++// 	/*
++// 	 * NCCL's algo-specific latencies for intra-node cases with NVLink.
++// 	 * The values are directly taken from NCCL (hwLat[])). Values in µsecs.
++// 	 */
++// 	float nccl_nvlink_lat[NCCL_NUM_ALGORITHMS][NCCL_NUM_PROTOCOLS];
++// } nccl_ofi_tuner_model_params_t ;
++
+ typedef struct nccl_ofi_tuner_model_params {
+-	float net_lat; /* 2 nodes, 8B RDMA w/imm lat */
+-	float internode_bw; /* per rail */
+-	float intranode_bw;
+-	int num_rails;
+-	/*
+-	 * NCCL's algo-specific latencies for intra-node cases with NVLink.
+-	 * The values are directly taken from NCCL (hwLat[])). Values in µsecs.
+-	 */
+-	float nccl_nvlink_lat[NCCL_NUM_ALGORITHMS][NCCL_NUM_PROTOCOLS];
+-} nccl_ofi_tuner_model_params_t ;
++    /* Tree algorithm parameters {LL, LL128, Simple} */
++    float tree_chunk_size[NCCL_NUM_PROTOCOLS];         // MB
++    float tree_o_send_small[NCCL_NUM_PROTOCOLS];       // us/KB
++    float tree_L_send_small[NCCL_NUM_PROTOCOLS];       // us
++    float tree_o_rrs_small[NCCL_NUM_PROTOCOLS];        // us/KB
++    float tree_L_rrs_small[NCCL_NUM_PROTOCOLS];        // us
++    float tree_o_rrcs_small[NCCL_NUM_PROTOCOLS];       // us/KB
++    float tree_L_rrcs_small[NCCL_NUM_PROTOCOLS];       // us
++    float tree_o_rcs_small[NCCL_NUM_PROTOCOLS];        // us/KB
++    float tree_L_rcs_small[NCCL_NUM_PROTOCOLS];        // us
++    float tree_L_send_large[NCCL_NUM_PROTOCOLS];       // us
++    float tree_L_rrs_large[NCCL_NUM_PROTOCOLS];        // us
++    float tree_L_rrcs_large[NCCL_NUM_PROTOCOLS];       // us
++    float tree_L_rcs_large[NCCL_NUM_PROTOCOLS];        // us
++    float tree_BW[NCCL_NUM_PROTOCOLS];                 // GB/s
++
++    /* NVLS Tree algorithm parameters {LL, LL128, Simple} */
++    float nvlstree_chunk_size[NCCL_NUM_PROTOCOLS];     // MB
++    float nvlstree_o_send_small[NCCL_NUM_PROTOCOLS];   // us/KB
++    float nvlstree_L_send_small[NCCL_NUM_PROTOCOLS];   // us
++    float nvlstree_o_rrs_small[NCCL_NUM_PROTOCOLS];    // us/KB
++    float nvlstree_L_rrs_small[NCCL_NUM_PROTOCOLS];    // us
++    float nvlstree_o_rrcs_small[NCCL_NUM_PROTOCOLS];   // us/KB
++    float nvlstree_L_rrcs_small[NCCL_NUM_PROTOCOLS];   // us
++    float nvlstree_o_rcs_small[NCCL_NUM_PROTOCOLS];    // us/KB
++    float nvlstree_L_rcs_small[NCCL_NUM_PROTOCOLS];    // us
++    float nvlstree_L_send_large[NCCL_NUM_PROTOCOLS];   // us
++    float nvlstree_L_rrs_large[NCCL_NUM_PROTOCOLS];    // us
++    float nvlstree_L_rrcs_large[NCCL_NUM_PROTOCOLS];   // us
++    float nvlstree_L_rcs_large[NCCL_NUM_PROTOCOLS];    // us
++    float nvlstree_BW[NCCL_NUM_PROTOCOLS];             // GB/s
++
++    /* Ring algorithm parameters {LL, LL128, Simple} */
++    float ring_G_reverse[NCCL_NUM_PROTOCOLS];          // us/KB
++    float ring_L_G[NCCL_NUM_PROTOCOLS];                // us
++    float ring_L_G_ss[NCCL_NUM_PROTOCOLS];             // us
++    float ring_max_nchannels_start[NCCL_NUM_PROTOCOLS];// KB
++    float ring_chunk_size[NCCL_NUM_PROTOCOLS];         // KB
++} nccl_ofi_tuner_model_params_t;
+ 
+ typedef struct nccl_ofi_tuner_model_dims {
+ 	/* communicator size */
+diff --git a/src/tuner/nccl_ofi_model.cpp b/src/tuner/nccl_ofi_model.cpp
+index 28ef024..346b744 100644
+--- a/src/tuner/nccl_ofi_model.cpp
++++ b/src/tuner/nccl_ofi_model.cpp
+@@ -12,113 +12,138 @@
+ 
+ static struct nccl_ofi_tuner_model_params model_platform_params[NCCL_OFI_TUNER_PLATFORM_MAX] = {
+ 	{ /* P5 & P5e platform */
+-		.net_lat = 20.0,
+-		.internode_bw = (12.5 * 1024 * 1024 * 1024 * 1e-6),
+-		.intranode_bw = (20.0 * 1024 * 1024 * 1024 * 1e-6),
+-		.num_rails = 4,
+-		.nccl_nvlink_lat = {
+-			{ .6, 1.25,  28 }, /* Tree (LL, LL128, Simple) */
+-			{ .6,  1.9, 3.4 }, /* Ring (LL, LL128, Simple) */
+-			{  0,    0, 3.7 }, /* Collnet Direct - Unused */
+-			{  0,    0, 2.8 }, /* Collnet Chain - Unused */
+-			{  0,    0,  23 }, /* NVLS (Simple only) */
+-			{  0,    0,  23 }, /* NVLS Tree (Simple only) */
+-			{  0,    0,  0  }  /* PAT */
+-		},
++		
+ 	},
+ 	{ /* P5en platform */
+-		.net_lat = 18.0,
+-		.internode_bw = (25.0 * 1024 * 1024 * 1024 * 1e-6),
+-		.intranode_bw = (20.0 * 1024 * 1024 * 1024 * 1e-6),
+-		.num_rails = 2,
+-		.nccl_nvlink_lat = {
+-			{ .6, 1.25,  28 }, /* Tree (LL, LL128, Simple) */
+-			{ .6,  1.9, 3.4 }, /* Ring (LL, LL128, Simple) */
+-			{  0,    0, 3.7 }, /* Collnet Direct - Unused */
+-			{  0,    0, 2.8 }, /* Collnet Chain - Unused */
+-			{  0,    0,  23 }, /* NVLS (Simple only) */
+-			{  0,    0,  23 }, /* NVLS Tree (Simple only) */
+-			{  0,    0,  0  }  /* PAT */
+-		},
++		// {LL, LL128, Simple}
++		.tree_chunk_size = {0.031250, 0.548767, 0.500000}, // MB
++		.tree_o_send_small = {0.060407, 0.002802, 0.015820}, // us/KB
++		.tree_L_send_small = {40.388924, 45.885675, 36.720219}, // us
++		.tree_o_rrs_small = {0.019338, 0.001449, 0.001666}, // us/KB
++		.tree_L_rrs_small = {31.587068, 30.866817, 35.260442}, // us
++		.tree_o_rrcs_small = {0.015470, 0.001148, 0.001791}, // us/KB
++		.tree_L_rrcs_small = {28.960860, 29.629957, 33.387989}, // us
++		.tree_o_rcs_small = {0.017798, 0.000850, 0.001972}, // us/KB
++		.tree_L_rcs_small = {28.600299, 30.013706, 25.292564}, // us
++		.tree_L_send_large = {77.431389, 120.396812, 152.974560}, // us
++		.tree_L_rrs_large = {97.401530, 67.440245, 71.174336}, // us
++		.tree_L_rrcs_large = {42.301611, 93.792993, 63.394286}, // us
++		.tree_L_rcs_large = {67.186667, 64.700682, 58.319361}, // us
++		.tree_BW = {19.087940, 116.402182, 164.713445}, // GB/s
++
++		// {LL, LL128, Simple}
++		.nvlstree_chunk_size = {0.000000, 0.000000, 0.250000}, // MB
++		.nvlstree_o_send_small = {0.000000, 0.000000, 0.006883}, // us/KB
++		.nvlstree_L_send_small = {0.000000, 0.000000, 45.320313}, // us
++		.nvlstree_o_rrs_small = {0.000000, 0.000000, 0.002637}, // us/KB
++		.nvlstree_L_rrs_small = {0.000000, 0.000000, 26.975397}, // us
++		.nvlstree_o_rrcs_small = {0.000000, 0.000000, 0.002403}, // us/KB
++		.nvlstree_L_rrcs_small = {0.000000, 0.000000, 25.866813}, // us
++		.nvlstree_o_rcs_small = {0.000000, 0.000000, 0.002548}, // us/KB
++		.nvlstree_L_rcs_small = {0.000000, 0.000000, 26.141172}, // us
++		.nvlstree_L_send_large = {0.000000, 0.000000, 135.161429}, // us
++		.nvlstree_L_rrs_large = {0.000000, 0.000000, 111.593675}, // us
++		.nvlstree_L_rrcs_large = {0.000000, 0.000000, 66.730161}, // us
++		.nvlstree_L_rcs_large = {0.000000, 0.000000, 85.390357}, // us
++		.nvlstree_BW = {0.000000, 0.000000, 169.338637}, // GB/s
++
++		// {LL, LL128, Simple}
++		.ring_G_reverse = {2.189494, 0.330056, 0.141437}, // (us/KB)
++		.ring_L_G = {51.879045, 53.632151, 45.967374}, // (us)
++		.ring_L_G_ss = {41.139063, 38.640000, 34.062241}, // (us)
++		.ring_max_nchannels_start = {2048.000000, 128.000000, 512.000000}, // (KB)
++		.ring_chunk_size = {32, 562, 1024}, // (KB)
+ 	},
+ };
+ 
+ static float nccl_ofi_tuner_compute_cost(struct nccl_ofi_tuner_model_params *params,
+-					 struct nccl_ofi_tuner_model_dims *dims,
+-					 ncclFunc_t func, int algo, int proto, int pipe_ops, size_t size)
++                     struct nccl_ofi_tuner_model_dims *dims,
++                     ncclFunc_t func, int algo, int proto, int pipe_ops, size_t size)
+ {
+-	float cost = -1;
+-	float latency = 0;
+-	float bw = 0;
+-	float p2p_lat = 0;
+-	float net_lat = 0;
+-	int num_steps = 0;
+-	int num_internode_steps = 0;
+-
+-	/*
+-	 * There is more involved than the NET_COMP_OVERHEAD itself for the
+-	 * simple protocol, including overheads from libfabric and NCCL's proxy
+-	 * thread itself in processing a completion handed to the host by the
+-	 * device. Costs associated with out-of-order completions that could
+-	 * stall the pipeline should be captured here as well.
+-	 */
+-	net_lat = (proto == NCCL_PROTO_SIMPLE)
+-		    ? params->net_lat + ofi_nccl_tuner_net_comp_overhead()
+-		    : params->net_lat;
+-
+-	p2p_lat = params->nccl_nvlink_lat[algo][proto];
+-
+-	switch(func) {
+-	case ncclFuncAllReduce:
+-		switch(algo) {
+-		case NCCL_ALGO_RING:
+-			num_steps = 2 * (dims->num_ranks - 1);
+-			num_internode_steps = 2 * dims->num_nodes;
+-			latency = (num_internode_steps * net_lat)
+-				  + (num_steps - num_internode_steps) * p2p_lat;
+-			bw = params->internode_bw * params->num_rails * ofi_nccl_tuner_num_channels();
+-			break;
+-
+-		case NCCL_ALGO_NVLS_TREE:
+-			latency = 2 * (p2p_lat + (log2(dims->num_nodes) * net_lat));
+-			bw = std::min(params->intranode_bw, (params->internode_bw * params->num_rails) / 2)
+-			     * ofi_nccl_tuner_num_channels();
+-			break;
+-
+-		case NCCL_ALGO_TREE:
+-			latency = ((2 * ((dims->num_ranks / dims->num_nodes) - 1) * p2p_lat)
+-				   + (2 * log2(dims->num_nodes) * net_lat));
+-			bw = (params->internode_bw * params->num_rails * ofi_nccl_tuner_num_channels()) / 2;
+-			break;
+-
+-		default:
+-			NCCL_OFI_TRACE(NCCL_TUNING, "Algorithm %d for collective %d  without a model.", algo, func);
+-			return -1;
+-		}
+-		break;
+-
+-	default:
+-		NCCL_OFI_TRACE(NCCL_TUNING, "Unsupported collective %d, fallback to NCCL's selection.", func);
+-		return -1;
+-	}
+-
+-	/* Penalize the low-latency protocol bandwidths for their overhead */
+-	if (proto == NCCL_PROTO_LL)
+-		/* 8B total with 4B data and 4B flags, so take a 50% hit */
+-		bw *= 0.5;
+-	else if (proto == NCCL_PROTO_LL128)
+-		/* 120B data and 8B flags */
+-		bw *= 0.9375;
+-
+-	/*
+-	 * Simplest hockney based: t = (⍺ + βm).
+-	 * When extending to LogGP or other models, implement separate cost
+-	 * functions and pick with a model config env rather than overwriting
+-	 * this one cost function.
+-	 */
+-	cost = (latency * pipe_ops) + size / bw;
+-
+-	return cost;
++    float cost = -1;
++    float chunk_size = 0;
++    float BW = 0;
++    int num_channels = ofi_nccl_tuner_num_channels();
++    float msg_size_kb = size * 1e-3;  // Convert to KB
++	float min_size = 0;
++
++    switch(func) {
++    case ncclFuncAllReduce:
++        switch(algo) {
++        case NCCL_ALGO_RING:
++            if (msg_size_kb < params->ring_max_nchannels_start[proto]) {
++                // Small message case with super small messages
++                cost = (params->ring_L_G_ss[proto]) *
++                       (dims->num_ranks * 2 - 2) / 2;
++            } else if (msg_size_kb < (dims->num_ranks * num_channels * params->ring_chunk_size[proto] * 2)) {
++                // Normal small message case
++                cost = (params->ring_L_G[proto] + 
++                       params->ring_G_reverse[proto] * (msg_size_kb / (dims->num_ranks * num_channels * 2))) *
++                       (dims->num_ranks * 2 - 2) / 2;
++            } else {
++                // Large message case
++                cost = (params->ring_G_reverse[proto] + 
++                       params->ring_L_G[proto] / params->ring_chunk_size[proto]) * (msg_size_kb / (dims->num_ranks * num_channels * 2)) *
++                       (dims->num_ranks * 2 - 2) / 2;
++            }
++            break;
++
++        case NCCL_ALGO_TREE:
++			min_size = fmin(params->tree_chunk_size[proto] * num_channels, size * 1e-6) * 1e3;
++            if (min_size * params->tree_o_send_small[proto] + 
++                params->tree_L_send_small[proto] < params->tree_L_send_large[proto]) {
++                // Small message case
++                cost = min_size * ((params->tree_o_rrs_small[proto] + params->tree_o_rcs_small[proto]) * 
++                       (log2(dims->num_nodes) - 1) + params->tree_o_send_small[proto] + 
++                       params->tree_o_rrcs_small[proto]) +
++                       params->tree_L_send_small[proto] + (log2(dims->num_nodes) - 1) * 
++                       (params->tree_L_rrs_small[proto] + params->tree_L_rcs_small[proto]) + 
++                       params->tree_L_rrcs_small[proto] +
++                       fmax(size * 1e-6 - num_channels * params->tree_chunk_size[proto], 0) * 1e3 / params->tree_BW[proto];
++            } else {
++                // Large message case
++                cost = params->tree_L_send_large[proto] + (log2(dims->num_nodes) - 1) * 
++                       (params->tree_L_rrs_large[proto] + params->tree_L_rcs_large[proto]) + 
++                       params->tree_L_rrcs_large[proto] +
++                       fmax(size * 1e-6 - num_channels * params->tree_chunk_size[proto], 0) * 1e3 / params->tree_BW[proto];
++            }
++            break;
++
++        case NCCL_ALGO_NVLS_TREE:
++            chunk_size = params->nvlstree_chunk_size[2];  // Only Simple protocol supported
++            BW = params->nvlstree_BW[2];
++			min_size = fmin(chunk_size * num_channels, size * 1e-6) * 1e3;
++            if (min_size * params->nvlstree_o_send_small[2] + 
++                params->nvlstree_L_send_small[2] < params->nvlstree_L_send_large[2]) {
++                // Small message case
++                cost = min_size * ((params->nvlstree_o_rrs_small[2] + params->nvlstree_o_rcs_small[2]) * 
++                       (log2(dims->num_nodes) - 1) + params->nvlstree_o_send_small[2] + 
++                       params->nvlstree_o_rrcs_small[2]) +
++                       params->nvlstree_L_send_small[2] + (log2(dims->num_nodes) - 1) * 
++                       (params->nvlstree_L_rrs_small[2] + params->nvlstree_L_rcs_small[2]) + 
++                       params->nvlstree_L_rrcs_small[2] +
++                       fmax(size * 1e-6 - num_channels * chunk_size, 0) * 1e3 / BW;
++            } else {
++                // Large message case
++                cost = params->nvlstree_L_send_large[2] + (log2(dims->num_nodes) - 1) * 
++                       (params->nvlstree_L_rrs_large[2] + params->nvlstree_L_rcs_large[2]) + 
++                       params->nvlstree_L_rrcs_large[2] +
++                       fmax(size * 1e-6 - num_channels * chunk_size, 0) * 1e3 / BW;
++            }
++            break;
++
++        default:
++            NCCL_OFI_TRACE(NCCL_TUNING, "Algorithm %d for collective %d without a model.", algo, func);
++            return -1;
++        }
++        break;
++
++    default:
++        NCCL_OFI_TRACE(NCCL_TUNING, "Unsupported collective %d, fallback to NCCL's selection.", func);
++        return -1;
++    }
++
++    return cost;
+ }
+ 
+ 

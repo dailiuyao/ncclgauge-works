@@ -1,0 +1,63 @@
+{
+  "note": "Calibrated from ring_param_extraction (Ring/Simple only). Overhead helpers take SLICE_SIZE (bytes); Simple chunk = buffsize/4. O_net = Iterative recovered-bandwidth gauge, median over chunks; O_NET_EFF_LINFIT = two-segment fit per nch (flat plateau below breakpoint, line above).",
+  "STAT": "med",
+  "n_configs": 40,
+  "O_NET_EFF_LINFIT": {
+    "Simple": {
+      "1": {
+        "breakpoint_KB": 48.0,
+        "lo_const_us": 5.0889,
+        "hi_intercept_us": 9.9052,
+        "hi_slope_us_per_KB": 0.005867,
+        "hi_R2": 0.9078
+      },
+      "2": {
+        "breakpoint_KB": 48.0,
+        "lo_const_us": 6.1072,
+        "hi_intercept_us": 12.8563,
+        "hi_slope_us_per_KB": 0.006329,
+        "hi_R2": 0.8929
+      },
+      "4": {
+        "breakpoint_KB": 48.0,
+        "lo_const_us": 7.427,
+        "hi_intercept_us": 13.0585,
+        "hi_slope_us_per_KB": 0.031189,
+        "hi_R2": 0.9928
+      },
+      "8": {
+        "breakpoint_KB": 192.0,
+        "lo_const_us": 15.8668,
+        "hi_intercept_us": -8.2628,
+        "hi_slope_us_per_KB": 0.144669,
+        "hi_R2": 0.9918
+      },
+      "16": {
+        "breakpoint_KB": 192.0,
+        "lo_const_us": 32.9754,
+        "hi_intercept_us": -22.4807,
+        "hi_slope_us_per_KB": 0.376263,
+        "hi_R2": 0.9995
+      }
+    }
+  },
+  "NIC_BW_DUAL_bytes_us": 48750.0,
+  "G_MEM_GBS": {
+    "Simple": 29.7783
+  },
+  "O_MEM_FIT": {
+    "Simple": {
+      "k_us_per_KB": 0.034387,
+      "b_us": 9.2644,
+      "R2": 0.9937,
+      "big_chunk_KB": 256.0,
+      "nch_plateau_thr_KB": {
+        "8": 192.0,
+        "16": 384.0
+      }
+    }
+  },
+  "O_ROUND_C_us": 42.2211,
+  "O_ROUND_K_us_per_MBch": 40.7095,
+  "O_ROUND_R2": 0.9844
+}

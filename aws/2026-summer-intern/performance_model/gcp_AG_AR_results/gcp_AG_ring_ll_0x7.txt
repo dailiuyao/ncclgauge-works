@@ -1,0 +1,21 @@
+Message Size	AWS Bus Bandwidth (GB/s)	GCP Bus Bandwidth (GB/s)	Comparison
+256 B	0.00	—	—
+512 B	0.00	—	—
+1 KB	0.00	—	—
+2 KB	0.01	—	—
+4 KB	0.02	0.02	⚪ ~equal
+8 KB	0.04	0.05	🔴 AWS 1.3x worse
+16 KB	0.07	0.09	🔴 AWS 1.3x worse
+32 KB	0.14	0.17	🔴 AWS 1.2x worse
+64 KB	0.24	0.34	🔴 AWS 1.4x worse
+128 KB	0.48	0.68	🔴 AWS 1.4x worse
+256 KB	0.92	—	—
+512 KB	1.66	—	—
+1 MB	2.75	—	—
+2 MB	3.43	—	—
+4 MB	3.51	—	—
+8 MB	3.55	—	—
+16 MB	3.57	—	—
+32 MB	3.59	—	—
+64 MB	3.60	—	—
+128 MB	3.60	—	—

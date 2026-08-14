@@ -1,0 +1,16 @@
+{
+  "_comment": "Per-platform HARDWARE parameters for the realistic model. Independent of roofline_model/config.json (do not reuse that one). The realistic Ring/Simple 0x7 model only needs 'a_us' (P2P RTT of a small message, fixed startup latency == alpha) and the NIC bandwidth (link_bw_GBs * efficiency). Calibrated overhead parameters live separately in overhead.json.",
+
+  "platforms": {
+    "p5en": {
+      "description": "AWS P5en (H100, 8 GPUs/node, dual EFA)",
+      "a_us": 24.92,
+      "a_us_provenance": "mean of pping RTT_us for msg<=32B",
+      "nic": {
+        "link_bw_GBs": 50,
+        "efficiency": 0.975,
+        "_comment": "aggregate NIC bandwidth = link_bw_GBs * efficiency * 1e3 bytes/us."
+      }
+    }
+  }
+}

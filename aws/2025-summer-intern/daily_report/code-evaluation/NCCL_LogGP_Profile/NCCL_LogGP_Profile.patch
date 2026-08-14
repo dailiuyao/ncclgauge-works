@@ -1,0 +1,298 @@
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+new file mode 100644
+index 0000000..9d31c1e
+--- /dev/null
++++ b/.vscode/settings.json
+@@ -0,0 +1,60 @@
++{
++    "files.associations": {
++        "*.in": "cpp",
++        "cmath": "cpp",
++        "cstdarg": "cpp",
++        "cstddef": "cpp",
++        "cstdio": "cpp",
++        "cstdlib": "cpp",
++        "cstring": "cpp",
++        "ctime": "cpp",
++        "cwchar": "cpp",
++        "array": "cpp",
++        "atomic": "cpp",
++        "bit": "cpp",
++        "chrono": "cpp",
++        "compare": "cpp",
++        "concepts": "cpp",
++        "cstdint": "cpp",
++        "forward_list": "cpp",
++        "map": "cpp",
++        "set": "cpp",
++        "string": "cpp",
++        "unordered_map": "cpp",
++        "unordered_set": "cpp",
++        "vector": "cpp",
++        "exception": "cpp",
++        "algorithm": "cpp",
++        "functional": "cpp",
++        "iterator": "cpp",
++        "memory": "cpp",
++        "memory_resource": "cpp",
++        "string_view": "cpp",
++        "tuple": "cpp",
++        "type_traits": "cpp",
++        "utility": "cpp",
++        "initializer_list": "cpp",
++        "iosfwd": "cpp",
++        "iostream": "cpp",
++        "limits": "cpp",
++        "new": "cpp",
++        "ostream": "cpp",
++        "stdexcept": "cpp",
++        "typeindex": "cpp",
++        "typeinfo": "cpp",
++        "variant": "cpp",
++        "__nullptr": "cpp",
++        "__bit_reference": "cpp",
++        "__hash_table": "cpp",
++        "__node_handle": "cpp",
++        "__split_buffer": "cpp",
++        "__verbose_abort": "cpp",
++        "locale": "cpp",
++        "numeric": "cpp",
++        "__tree": "cpp",
++        "random": "cpp",
++        "version": "cpp",
++        "__config": "cpp",
++        "semaphore": "cpp"
++    }
++}
+\ No newline at end of file
+diff --git a/src/device/all_reduce.h b/src/device/all_reduce.h
+index f6b6e9c..97c9bd2 100644
+--- a/src/device/all_reduce.h
++++ b/src/device/all_reduce.h
+@@ -45,7 +45,7 @@ namespace {
+       offset = gridOffset + elemOffset + chunkOffset;
+       nelem = (int)min(chunkCount, remCount - chunkOffset);
+       prims.directSend(offset, offset, nelem);
+-
++      
+       // k-2 steps: reduce and copy to next GPU
+       for (int j = 2; j < nranks; ++j) {
+         chunk = modRanks(ringIx + nranks - j);
+diff --git a/src/enqueue.cc b/src/enqueue.cc
+index f5b4372..499f45d 100644
+--- a/src/enqueue.cc
++++ b/src/enqueue.cc
+@@ -748,6 +748,9 @@ static ncclResult_t scheduleCollTasksToPlan(
+       INFO(NCCL_TUNING, "%s: %ld Bytes -> Algo %s proto %s channel{Lo..Hi}={%d..%d}",
+         ncclFuncToString(task->func), task->count * ncclTypeSize(task->datatype), ncclAlgoToString(task->algorithm),
+         ncclProtoToString(task->protocol), devWork->channelLo, devWork->channelHi);
++      lyd_channels_num = devWork->channelHi+1;
++      lyd_protocol = task->protocol;
++      lyd_algo = task->algorithm;
+ 
+       if (task->isCollnet) {
+         TRACE(NCCL_COLL, "Collective %s(%s, %s, %s, %s) count=%ld devFuncId=%d channel{Lo..Hi}={%d..%d} count=%ld chunkCount=%d",
+@@ -1557,6 +1560,8 @@ ncclResult_t ncclLaunchKernel(struct ncclComm* comm, struct ncclKernelPlan* plan
+   CUfunction fn;
+   CUDACHECKGOTO(cudaGetFuncBySymbol(&fn, sym), ret, do_return);
+ 
++  nccl_kernel_start_time = std::chrono::high_resolution_clock::now();  
++
+   if (CUDART_VERSION >= 11080 && driverVersion >= 11080) {
+   #if CUDART_VERSION >= 11080
+     int compCap = comm->compCap;
+diff --git a/src/include/device.h b/src/include/device.h
+index 2c5ce10..5648326 100644
+--- a/src/include/device.h
++++ b/src/include/device.h
+@@ -14,6 +14,8 @@
+ #include <algorithm>
+ #include <stdint.h>
+ #include <sys/types.h>
++#include <stdio.h>
++
+ 
+ extern const char* ncclFuncStr[NCCL_NUM_FUNCTIONS];
+ 
+diff --git a/src/nccl.h.in b/src/nccl.h.in
+index 292a839..a237ab7 100644
+--- a/src/nccl.h.in
++++ b/src/nccl.h.in
+@@ -7,6 +7,8 @@
+ #ifndef NCCL_H_
+ #define NCCL_H_
+ 
++#include <chrono> 
++
+ #include <cuda_runtime.h>
+ #include <cuda_fp16.h>
+ #if CUDART_VERSION >= 11000
+@@ -511,6 +513,34 @@ ncclResult_t pncclGroupEnd();
+ ncclResult_t  ncclGroupSimulateEnd(ncclSimInfo_t* simInfo);
+ ncclResult_t pncclGroupSimulateEnd(ncclSimInfo_t* simInfo);
+ 
++#define MAX_GAUGE_PEERS 32
++#define MAX_GAUGE_CHUNKS 128
++#define MAX_GAUGE_CHANNELS 32
++
++#define PROFILE_LYD 1
++
++extern std::chrono::time_point<std::chrono::high_resolution_clock> net_transmitted_time[MAX_GAUGE_CHANNELS][MAX_GAUGE_CHUNKS][MAX_GAUGE_PEERS];
++
++extern std::chrono::time_point<std::chrono::high_resolution_clock> net_done_time[MAX_GAUGE_CHANNELS][MAX_GAUGE_CHUNKS][MAX_GAUGE_PEERS];
++
++extern std::chrono::time_point<std::chrono::high_resolution_clock> net_post_time[MAX_GAUGE_CHANNELS][MAX_GAUGE_CHUNKS][MAX_GAUGE_PEERS];
++
++extern std::chrono::time_point<std::chrono::high_resolution_clock> net_data_ready_time[MAX_GAUGE_CHANNELS][MAX_GAUGE_CHUNKS][MAX_GAUGE_PEERS];
++
++extern std::chrono::time_point<std::chrono::high_resolution_clock> nccl_kernel_start_time;
++
++extern int lyd_chunk_num;
++
++extern int lyd_channels_num;
++
++extern int lyd_protocol;
++
++extern int lyd_algo;
++
++#define WARMUP_ITERATION 20
++
++#define GAUGE_GPU_FREQUENCY 1410
++
+ #ifdef __cplusplus
+ } // end extern "C"
+ #endif
+diff --git a/src/transport/net.cc b/src/transport/net.cc
+index c0cd20d..5be12cc 100644
+--- a/src/transport/net.cc
++++ b/src/transport/net.cc
+@@ -20,6 +20,11 @@
+ 
+ static_assert(sizeof(ncclNetHandle_t) <= CONNECT_SIZE, "NET Connect info is too large");
+ 
++int lyd_data_ready[MAX_GAUGE_CHANNELS][MAX_GAUGE_PEERS] = {{0}};
++// static int post_message_itr[MAX_GAUGE_CHANNELS][MAX_GAUGE_PEERS] = {{0}};
++// static int done_message_itr[MAX_GAUGE_CHANNELS][MAX_GAUGE_PEERS] = {{0}};
++
++
+ #define NCCL_NET_MAP_HOSTMEM 0
+ #define NCCL_NET_MAP_DEVMEM 1
+ #define NCCL_NET_MAP_SHARED_HOSTMEM 2
+@@ -1137,6 +1142,13 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct
+       char* localBuff = NCCL_NET_MAP_GET_POINTER(&resources->map, cpu, buffs[p]);
+       // Post buffers to the GPU
+       if (sub->posted < sub->nsteps && sub->posted < sub->done + maxDepth) {
++        // printf("sub->channelId is %d, sub->posted %d, args->sliceSteps %d, sub->posted/args->sliceSteps %d in proxy\n", sub->channelId, sub->posted, args->sliceSteps, sub->posted/args->sliceSteps);
++        #if PROFILE_LYD == 1
++        if (sub->posted/args->sliceSteps < MAX_GAUGE_CHUNKS - 1) {
++            net_post_time[sub->channelId][sub->posted/args->sliceSteps][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++        }
++        net_post_time[sub->channelId][MAX_GAUGE_CHUNKS-1][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++        #endif
+         ncclProfilerStartSendProxyStepEvent(s, args, postedStepId);
+         int buffSlot = (sub->base+sub->posted)%NCCL_STEPS;
+         if (resources->shared) {
+@@ -1201,6 +1213,16 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct
+             }
+           }
+           if (ready) {
++            #if PROFILE_LYD == 1
++            if (lyd_data_ready[sub->channelId][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] == 0) {
++              if (sub->transmitted/args->sliceSteps < MAX_GAUGE_CHUNKS-1){ 
++                net_data_ready_time[sub->channelId][sub->transmitted/args->sliceSteps][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++              } else {
++                net_data_ready_time[sub->channelId][MAX_GAUGE_CHUNKS-1][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++              }
++              lyd_data_ready[sub->channelId][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = 1;
++            }
++            #endif
+             ncclProfilerRecordProxyStepEventState(s, args, transmittedStepId, ncclProfilerProxyStepSendPeerWait_v4);
+             // Data is ready, try to send.
+             // Coverity complains about the size here as pointing to an out-of-scope temporary.  Which is nonsense,
+@@ -1209,6 +1231,14 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct
+             void* phandle = &sub->pHandles[DIVUP(transmittedStepId, args->sliceSteps)%NCCL_STEPS];
+             NCCLCHECK(proxyState->ncclNet->isend(resources->netSendComm, buff, size, resources->tpRank, sub->sendMhandle, phandle, sub->requests+buffSlot));
+             if (sub->requests[buffSlot] != NULL) {
++              #if PROFILE_LYD == 1
++              lyd_data_ready[sub->channelId][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = 0;
++              if (sub->transmitted/args->sliceSteps < MAX_GAUGE_CHUNKS-1) {
++                net_transmitted_time[sub->channelId][sub->transmitted/args->sliceSteps][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++              } 
++              net_transmitted_time[sub->channelId][MAX_GAUGE_CHUNKS-1][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now(); 
++              #endif
++
+               TRACE(NCCL_NET, "sendProxy [%ld/%d/%d] Isend posted, req %p, buff %p, size %d, proto %d, myRank %d, channelId %d, mhandle %p", sub->transmitted, buffSlot, sub->nsteps, sub->requests[buffSlot], buff, size, p, proxyState->tpRank, sub->channelId, sub->sendMhandle);
+               sub->transSize = size;
+               sub->transmitted += args->sliceSteps;
+@@ -1226,11 +1256,19 @@ static ncclResult_t sendProxyProgress(struct ncclProxyState* proxyState, struct
+         int buffSlot = (sub->base+sub->done)%NCCL_STEPS;
+         NCCLCHECK(proxyState->ncclNet->test(sub->requests[buffSlot], &done, &size));
+         if (done) {
++          // printf("sub->channelId is %d, sub->done %d, args->sliceSteps %d, sub->done/args->sliceSteps %d in proxy\n", sub->channelId, sub->done, args->sliceSteps, sub->done/args->sliceSteps);
++          #if PROFILE_LYD == 1
++          if (sub->done/args->sliceSteps < MAX_GAUGE_CHUNKS - 1) {
++            net_done_time[sub->channelId][sub->done/args->sliceSteps][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++          }
++          net_done_time[sub->channelId][MAX_GAUGE_CHUNKS-1][((struct sendNetResources*)sub->connection->transportResources)->tpRemoteRank] = std::chrono::high_resolution_clock::now();
++          #endif
+           // Make sure size is reset to -1 before we update the head.
+           connFifo[buffSlot].size = -1;
+           __sync_synchronize();
+           TRACE(NCCL_NET, "sendProxy [%ld/%d/%d] request %p done", sub->done, buffSlot, sub->nsteps, sub->requests[buffSlot]);
+           sub->done += args->sliceSteps;
++          lyd_chunk_num = sub->done/args->sliceSteps;
+           ncclProfilerStopProxyStepEvent(s, args, doneStepId);
+ 
+           if (resources->shared == 0) {
+diff --git a/src/transport/p2p.cc b/src/transport/p2p.cc
+index d263dda..e9047fb 100644
+--- a/src/transport/p2p.cc
++++ b/src/transport/p2p.cc
+@@ -16,6 +16,9 @@
+ 
+ enum p2pType { P2P_DIRECT, P2P_INTERMEDIATE, P2P_IPC, P2P_CUMEM };
+ 
++// static int post_message_itr[MAX_GAUGE_CHANNELS][MAX_GAUGE_PEERS] = {{0}};
++// static int lyd_p2p_peer[MAX_GAUGE_CHANNELS]= {0};
++
+ struct ncclP2pBuff {
+   void* directPtr;
+   size_t size;
+@@ -408,6 +411,8 @@ ncclResult_t p2pSendSetup(struct ncclComm* comm, struct ncclTopoGraph* graph, st
+ 	  comm->peerInfo[intermediateRank].nvmlDev, useReadStr);
+   }
+ 
++  // lyd_p2p_peer[channelId] = peerInfo->rank;
++
+   memset(&req, '\0', sizeof(req));
+   req.size = sendSize;
+   req.refcount = 0;
+@@ -776,6 +781,16 @@ static ncclResult_t p2pSendProxyProgress(struct ncclProxyState* proxyState, stru
+         volatile uint64_t* recvTail = &resources->ceRecvMem->tail;
+         // Check GPU has sent everything
+         if ((*recvTail > sub->base+sub->transmitted)) {
++          // if (sub->transmitted == 0) post_message_itr[sub->channelId][sub->peer] += 1; 
++          // if (post_message_itr[sub->channelId][sub->peer] > WARMUP_ITERATION) {
++          //   if (net_first_post_time[sub->channelId][sub->peer] == std::chrono::time_point<std::chrono::high_resolution_clock>()) {
++          //     net_first_post_time[sub->channelId][sub->peer] = std::chrono::high_resolution_clock::now();
++          //   }
++          // }
++          // if (sub->transmitted < MAX_GAUGE_CHUNKS - 1) {
++          //     net_post_time[sub->channelId][sub->transmitted][sub->peer] = net_data_ready_time[sub->channelId][sub->transmitted][sub->peer] = net_transmitted_time[sub->channelId][sub->transmitted][sub->peer] = std::chrono::high_resolution_clock::now();
++          // }
++          // net_post_time[sub->channelId][MAX_GAUGE_CHUNKS-1][sub->peer] = net_data_ready_time[sub->channelId][MAX_GAUGE_CHUNKS-1][sub->peer] = net_transmitted_time[sub->channelId][MAX_GAUGE_CHUNKS-1][sub->peer] = std::chrono::high_resolution_clock::now();
+           int size = connFifo[buffSlot].size;
+           CUDACHECK(cudaMemcpyAsync(resources->recvFifo+buffSlot*stepSize, resources->ceDevBuff+buffSlot*stepSize, size, cudaMemcpyDeviceToDevice, resources->stream));
+           CUDACHECK(cudaEventRecord(resources->events[buffSlot], resources->stream));
+@@ -787,6 +802,11 @@ static ncclResult_t p2pSendProxyProgress(struct ncclProxyState* proxyState, stru
+         cudaError_t res = cudaEventQuery(resources->events[buffSlot]);
+         if (res != cudaErrorNotReady) CUDACHECK(res);
+         if (res == cudaSuccess) {
++          // if (sub->done < MAX_GAUGE_CHUNKS - 1) {
++          //   net_done_time[sub->channelId][sub->done][sub->peer] = std::chrono::high_resolution_clock::now();
++          // }
++          // net_done_time[sub->channelId][MAX_GAUGE_CHUNKS-1][sub->peer] = std::chrono::high_resolution_clock::now();
++          // lyd_chunk_num = sub->done;
+           sub->done += args->sliceSteps;
+           // Notify SHM
+           resources->shm->recvMem.tail = sub->base + sub->done;
